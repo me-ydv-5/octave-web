@@ -1,1 +1,1 @@
-mkoctfile -v __curl__.cc
+mkoctfile -v cookie_manager.cc

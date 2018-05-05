@@ -93,6 +93,21 @@ public:
     curl_error (curl_easy_setopt (curl, CURLOPT_URL, url.c_str ()));
   }
 
+  //! COOKIES OPTIONS
+  //! sets the cookies to be written in the file specified
+  void setJAR (std::string filename) {
+    curl_error (curl_easy_setopt (curl, CURLOPT_COOKIEJAR, filename.c_str()));
+  }
+
+  //! USERAGENT OPTIONS
+  //! sets the cookies to be written in the file specified
+  void setAGENT (const char *lib_ver) {
+    std::string agent = "GNU Octave/" + std::string(OCTAVE_VERSION)         \
+    + " (https://www.gnu.org/software/octave/ ; help@octave.org) libcurl/"
+    + std::string(lib_ver); 
+    curl_error (curl_easy_setopt (curl, CURLOPT_USERAGENT, agent.c_str()));
+  }
+
   //! GETINFO
   //! get the last used URL
   std::string getEFFECTIVE_URL () {
