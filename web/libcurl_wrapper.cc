@@ -25,35 +25,35 @@ along with Octave; see the file COPYING.  If not, see
 #include <curl/easy.h>
 //#endif
 
-// struct for storing the response of curl_easy_perform.
-// the struct is dynamic, i.e, the space grows automatically.
-struct MemoryStruct {
-  MemoryStruct (char* mem, size_t sz): memory(mem), size(sz) { }
-  ~MemoryStruct () { }
-  char *memory;
-  size_t size;
-};
+// // struct for storing the response of curl_easy_perform.
+// // the struct is dynamic, i.e, the space grows automatically.
+// struct MemoryStruct {
+//   MemoryStruct (char* mem, size_t sz): memory(mem), size(sz) { }
+//   ~MemoryStruct () { }
+//   char *memory;
+//   size_t size;
+// };
 
-// taken from https://curl.haxx.se/libcurl/c/getinmemory.html
-static size_t
-WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
-{
-  size_t realsize = size * nmemb;
-  struct MemoryStruct *mem = (struct MemoryStruct *)userp;
+// // taken from https://curl.haxx.se/libcurl/c/getinmemory.html
+// static size_t
+// WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
+// {
+//   size_t realsize = size * nmemb;
+//   struct MemoryStruct *mem = (struct MemoryStruct *)userp;
  
-  mem->memory = (char*)realloc(mem->memory, mem->size + realsize + 1);
-  if(mem->memory == NULL) {
-    /* out of memory! */ 
-    printf("not enough memory (realloc returned NULL)\n");
-    return 0;
-  }
+//   mem->memory = (char*)realloc(mem->memory, mem->size + realsize + 1);
+//   if(mem->memory == NULL) {
+//     /* out of memory! */ 
+//     printf("not enough memory (realloc returned NULL)\n");
+//     return 0;
+//   }
  
-  memcpy(&(mem->memory[mem->size]), contents, realsize);
-  mem->size += realsize;
-  mem->memory[mem->size] = 0;
+//   memcpy(&(mem->memory[mem->size]), contents, realsize);
+//   mem->size += realsize;
+//   mem->memory[mem->size] = 0;
  
-  return realsize;
-}
+//   return realsize;
+// }
 
 //! Wrapper class for libcurl's easy interface, for the API specification see
 //! https://curl.haxx.se/libcurl/c/libcurl-easy.html.
@@ -90,8 +90,8 @@ public:
     obj.setERRORBUFFER (obj.errbuf);
     obj.setVERBOSE (false);
     obj.setTIMEOUT ();
-    obj.setWRITEFUNCTION ();
-    obj.setWRITEDATA ();
+    // obj.setWRITEFUNCTION ();
+    // obj.setWRITEDATA ();
 
     //Set the user agent
     curl_version_info_data * data = curl_version_info(CURLVERSION_NOW);
@@ -156,17 +156,18 @@ public:
     curl_error ( curl_easy_setopt(curl, CURLOPT_TIMEOUT, 20L));
   }
 
-  //! CALLBACK OPTIONS
-  //! We don't want the user to see all the details, but only the necessary information
-  void setWRITEFUNCTION () {
-    curl_error ( curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback));
-  }
+  // //! CALLBACK OPTIONS
+  // //! We don't want the user to see all the details, but only the necessary information
+  // void setWRITEFUNCTION () {
+  //   curl_error ( curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback));
+  // }
 
-  //! MEMORY OPTIONS FOR THE CALLBACK FUNCTION
-  //! Pass our 'chunk' struct to the callback function
-  void setWRITEDATA () {
-    curl_error ( curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk));
-  }
+  // //! MEMORY OPTIONS FOR THE CALLBACK FUNCTION
+  // //! Pass our 'chunk' struct to the callback function
+  // void setWRITEDATA () {
+  //   curl_error ( curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk));
+  // }
+  
   //! COOKIES OPTIONS
   //! get all the stored cookies
   void getCOOKIELIST () {
