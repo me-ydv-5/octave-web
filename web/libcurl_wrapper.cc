@@ -25,12 +25,44 @@ along with Octave; see the file COPYING.  If not, see
 #include <curl/easy.h>
 //#endif
 
+// struct for storing the response of curl_easy_perform.
+// the struct is dynamic, i.e, the space grows automatically.
+struct MemoryStruct {
+  MemoryStruct (char* mem, size_t sz): memory(mem), size(sz) { }
+  ~MemoryStruct () { }
+  char *memory;
+  size_t size;
+};
+
+// taken from https://curl.haxx.se/libcurl/c/getinmemory.html
+static size_t
+WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
+{
+  size_t realsize = size * nmemb;
+  struct MemoryStruct *mem = (struct MemoryStruct *)userp;
+ 
+  mem->memory = (char*)realloc(mem->memory, mem->size + realsize + 1);
+  if(mem->memory == NULL) {
+    /* out of memory! */ 
+    printf("not enough memory (realloc returned NULL)\n");
+    return 0;
+  }
+ 
+  memcpy(&(mem->memory[mem->size]), contents, realsize);
+  mem->size += realsize;
+  mem->memory[mem->size] = 0;
+ 
+  return realsize;
+}
+
 //! Wrapper class for libcurl's easy interface, for the API specification see
 //! https://curl.haxx.se/libcurl/c/libcurl-easy.html.
 
 class libcurl_wrapper {
 private:
   CURL* curl;  //! curl instance
+  FILE* fid;
+  struct MemoryStruct chunk;
   char errbuf[CURL_ERROR_SIZE]; //! curl error buffer
 
   //! Throw an Octave error and print message and code from libcurl
@@ -45,9 +77,8 @@ protected:
 
   //! Ctor.
 
-  libcurl_wrapper () : curl(curl_easy_init ()) {
-    std::cout << "libcurl_wrapper: new instance" << std::endl; //FIXME remove
-  }
+  libcurl_wrapper () : curl(curl_easy_init ()), fid(fopen("temp.txt","wr+")), \
+            chunk((char*)malloc(1),0) { }
 
 public:
 
@@ -57,7 +88,21 @@ public:
     libcurl_wrapper obj;
     // default error buffer is that of the object itself
     obj.setERRORBUFFER (obj.errbuf);
-    obj.setVERBOSE (true);
+    obj.setVERBOSE (false);
+    obj.setTIMEOUT ();
+    obj.setWRITEFUNCTION ();
+    obj.setWRITEDATA ();
+
+    //Set the user agent
+    curl_version_info_data * data = curl_version_info(CURLVERSION_NOW);
+    const char *lib_ver = data->version;
+    obj.setAGENT(lib_ver);
+
+  
+    //Set the cookie jar 
+    obj.setCOOKIEJAR("temp.txt");
+    obj.setCOOKIEREAD("temp.txt");
+    
     return obj;
   }
 
@@ -66,8 +111,8 @@ public:
   ~libcurl_wrapper() {
     if (curl) {
       curl_easy_cleanup (curl);
+      fclose(fid);
     }
-    std::cout << std::endl << "libcurl_wrapper: destruct" << std::endl;
   }
 
   //! Wrapper for curl_easy_perform
@@ -95,12 +140,51 @@ public:
 
   //! COOKIES OPTIONS
   //! sets the cookies to be written in the file specified
-  void setJAR (std::string filename) {
+  void setCOOKIEJAR (std::string filename) {
     curl_error (curl_easy_setopt (curl, CURLOPT_COOKIEJAR, filename.c_str()));
   }
 
+  //! COOKIES OPTIONS
+  //! sets the cookies to be read from the file specified
+  void setCOOKIEREAD (std::string filename) {
+    curl_error (curl_easy_setopt (curl, CURLOPT_COOKIEFILE, filename.c_str()));
+  }
+
+  //! TIMEOUT OPTIONS
+  //! sets the timeout of 20 seconds for a transfer, default is infinite
+  void setTIMEOUT () {
+    curl_error ( curl_easy_setopt(curl, CURLOPT_TIMEOUT, 20L));
+  }
+
+  //! CALLBACK OPTIONS
+  //! We don't want the user to see all the details, but only the necessary information
+  void setWRITEFUNCTION () {
+    curl_error ( curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback));
+  }
+
+  //! MEMORY OPTIONS FOR THE CALLBACK FUNCTION
+  //! Pass our 'chunk' struct to the callback function
+  void setWRITEDATA () {
+    curl_error ( curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk));
+  }
+  //! COOKIES OPTIONS
+  //! get all the stored cookies
+  void getCOOKIELIST () {
+    struct curl_slist *cookies = NULL;
+    curl_error (curl_easy_getinfo (curl, CURLINFO_COOKIELIST, &cookies));
+    if(cookies) {
+       // a linked list of cookies in cookie file format 
+      struct curl_slist *each = cookies;
+      while(each) {
+        printf("%s\n\n", each->data);
+        each = each->next;
+    }
+    curl_slist_free_all(cookies);
+  }
+  }
+
   //! USERAGENT OPTIONS
-  //! sets the cookies to be written in the file specified
+  //! sets the user agent for the software to be used when communicating with wiki
   void setAGENT (const char *lib_ver) {
     std::string agent = "GNU Octave/" + std::string(OCTAVE_VERSION)         \
     + " (https://www.gnu.org/software/octave/ ; help@octave.org) libcurl/"
@@ -112,11 +196,22 @@ public:
   //! get the last used URL
   std::string getEFFECTIVE_URL () {
     char* urlp;
-    std::string s;
     curl_error (curl_easy_getinfo (curl, CURLINFO_EFFECTIVE_URL, &urlp));
     if (urlp) {
       return std::string (urlp);
     }
     return "";
   }
+
+  //! GETTOKEN
+  //! get the login token, it acutally sends out the complete
+  //! output received, which will then be fed to regex
+  char* getTOKEN () {
+    if (chunk.memory)
+    {
+      return chunk.memory;
+    }
+    error("__curl__: Nothing to output\n");
+  }
+
 };
