@@ -14,9 +14,10 @@ password = char ("werner1988");
 
 % disp ("Login (1/2): Get login token...");
 % url = javaObject ("java.net.URL", ...
-%   [wiki_api, "?action=query&meta=tokens&type=login&format=json"]);
+% [wiki_api, "?action=query&meta=tokens&type=login&format=json"];  
+wiki_api = [wiki_api, "?action=query&meta=tokens&type=login&format=json"];
 
-token = __curl__("hello");
+[token,cookie_jar] = cookie_manager(wiki_api);
 if (! isempty (token))
   logintoken = regexp (token, '.*"logintoken":"(\S+)+".*', "tokens");
   if (! isempty (logintoken))
@@ -29,6 +30,7 @@ if (! isempty (token))
   endif
 endif
 
+delete(cookie_jar);
 
 % disp ("Login (2/2): Logging in...");
 % url = javaObject ("java.net.URL", ...
