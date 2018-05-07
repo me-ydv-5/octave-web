@@ -25,35 +25,36 @@ along with Octave; see the file COPYING.  If not, see
 #include <curl/easy.h>
 //#endif
 
-// // struct for storing the response of curl_easy_perform.
-// // the struct is dynamic, i.e, the space grows automatically.
-// struct MemoryStruct {
-//   MemoryStruct (char* mem, size_t sz): memory(mem), size(sz) { }
-//   ~MemoryStruct () { }
-//   char *memory;
-//   size_t size;
-// };
+// struct for storing the response of curl_easy_perform.
+// the struct is dynamic, i.e, the space grows automatically.
+struct MemoryStruct {
+  MemoryStruct (char* mem, size_t sz): memory(mem), size(sz) { }
+  ~MemoryStruct () { }
+  char *memory;
+  size_t size;
+};
 
-// // taken from https://curl.haxx.se/libcurl/c/getinmemory.html
-// static size_t
-// WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
-// {
-//   size_t realsize = size * nmemb;
-//   struct MemoryStruct *mem = (struct MemoryStruct *)userp;
+// taken from https://curl.haxx.se/libcurl/c/getinmemory.html
+// Callback function to write the output in a buffer, which 
+// dynamically allcates the space.
+static size_t
+WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
+{
+  size_t realsize = size * nmemb;
+  struct MemoryStruct *mem = (struct MemoryStruct *)userp;
  
-//   mem->memory = (char*)realloc(mem->memory, mem->size + realsize + 1);
-//   if(mem->memory == NULL) {
-//     /* out of memory! */ 
-//     printf("not enough memory (realloc returned NULL)\n");
-//     return 0;
-//   }
+  mem->memory = (char*)realloc(mem->memory, mem->size + realsize + 1);
+  if(mem->memory == NULL) {
+    /* out of memory! */ 
+    error("Not enough memory (realloc returned NULL)\n");
+  }
  
-//   memcpy(&(mem->memory[mem->size]), contents, realsize);
-//   mem->size += realsize;
-//   mem->memory[mem->size] = 0;
+  memcpy(&(mem->memory[mem->size]), contents, realsize);
+  mem->size += realsize;
+  mem->memory[mem->size] = 0;
  
-//   return realsize;
-// }
+  return realsize;
+}
 
 //! Wrapper class for libcurl's easy interface, for the API specification see
 //! https://curl.haxx.se/libcurl/c/libcurl-easy.html.
@@ -77,31 +78,27 @@ protected:
 
   //! Ctor.
 
-  libcurl_wrapper () : curl(curl_easy_init ()), fid(fopen("temp.txt","wr+")), \
+  libcurl_wrapper (std::string s) : curl(curl_easy_init ()), fid(fopen(s.c_str(),"w+")), \
             chunk((char*)malloc(1),0) { }
 
 public:
 
   //! Static factory method
 
-  static libcurl_wrapper create () {
-    libcurl_wrapper obj;
+  static libcurl_wrapper create (std::string s) {
+    libcurl_wrapper obj(s);
     // default error buffer is that of the object itself
     obj.setERRORBUFFER (obj.errbuf);
     obj.setVERBOSE (false);
+    obj.setAGENT();
     obj.setTIMEOUT ();
-    // obj.setWRITEFUNCTION ();
-    // obj.setWRITEDATA ();
+    obj.setWRITEFUNCTION ();
+    
 
-    //Set the user agent
-    curl_version_info_data * data = curl_version_info(CURLVERSION_NOW);
-    const char *lib_ver = data->version;
-    obj.setAGENT(lib_ver);
 
-  
     //Set the cookie jar 
-    obj.setCOOKIEJAR("temp.txt");
-    obj.setCOOKIEREAD("temp.txt");
+    obj.setCOOKIEJAR(s);
+    obj.setCOOKIEREAD(s);
     
     return obj;
   }
@@ -111,6 +108,7 @@ public:
   ~libcurl_wrapper() {
     if (curl) {
       curl_easy_cleanup (curl);
+      free(chunk.memory);
       fclose(fid);
     }
   }
@@ -156,17 +154,14 @@ public:
     curl_error ( curl_easy_setopt(curl, CURLOPT_TIMEOUT, 20L));
   }
 
-  // //! CALLBACK OPTIONS
-  // //! We don't want the user to see all the details, but only the necessary information
-  // void setWRITEFUNCTION () {
-  //   curl_error ( curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback));
-  // }
-
-  // //! MEMORY OPTIONS FOR THE CALLBACK FUNCTION
-  // //! Pass our 'chunk' struct to the callback function
-  // void setWRITEDATA () {
-  //   curl_error ( curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk));
-  // }
+  //! CALLBACK OPTIONS
+  //! We don't want the user to see all the details, but only the necessary information
+  //! Redirect the output to the buffer in the memory instead of stdout
+  void setWRITEFUNCTION () {
+    curl_error ( curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback));
+    /* we pass our 'chunk' struct to the callback function */ 
+    curl_error ( curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk));
+  }
   
   //! COOKIES OPTIONS
   //! get all the stored cookies
@@ -186,7 +181,11 @@ public:
 
   //! USERAGENT OPTIONS
   //! sets the user agent for the software to be used when communicating with wiki
-  void setAGENT (const char *lib_ver) {
+  void setAGENT () {
+
+    //Set the user agent
+    curl_version_info_data * data = curl_version_info(CURLVERSION_NOW);
+    const char *lib_ver = data->version;
     std::string agent = "GNU Octave/" + std::string(OCTAVE_VERSION)         \
     + " (https://www.gnu.org/software/octave/ ; help@octave.org) libcurl/"
     + std::string(lib_ver); 
@@ -206,7 +205,7 @@ public:
 
   //! GETTOKEN
   //! get the login token, it acutally sends out the complete
-  //! output received, which will then be fed to regex
+  //! output received, which will then be fed to regexp
   char* getTOKEN () {
     if (chunk.memory)
     {
